@@ -231,12 +231,22 @@ with st.sidebar:
     config = LOTERIAS[loteria_selecionada]
     
     st.markdown("---")
-    st.markdown("### 🎯 Gerador de Jogos")
+    st.markdown("### 🎯 Formular Jogos")
     qtd_jogos = st.slider("Quantidade de jogos", 1, 20, 5)
-    estrategia = st.radio(
-        "Estratégia",
-        ["Equilibrada (Frequência + Atraso)", "Números Quentes", "Números Atrasados", "Aleatório"]
+    
+    modo_geracao = st.radio(
+        "Modo de formulação",
+        ["Formulação Normal", "Formulação Inteligente"],
+        help="Normal: gera de forma simples. Inteligente: analisa o histórico e prioriza números com tendência."
     )
+    
+    if modo_geracao == "Formulação Inteligente":
+        estrategia = st.selectbox(
+            "Tipo de análise inteligente",
+            ["Equilibrada (Frequência + Atraso)", "Números Quentes (mais saíram)", "Números Atrasados (há mais tempo sem sair)"]
+        )
+    else:
+        estrategia = "Aleatório"
     
     st.markdown("---")
     st.caption("Dados oficiais da Caixa + histórico público")
@@ -311,32 +321,38 @@ if "df" in st.session_state and st.session_state.get("config") == config:
         st.plotly_chart(fig2, use_container_width=True)
     
     with tab3:
-        st.markdown("#### Gerar Jogos")
-        if st.button("Gerar Jogos Agora", type="primary"):
-            freq = analisar_frequencia(df, config["min_num"], config["max_num"])
-            atraso = calcular_atraso(df, config["min_num"], config["max_num"])
-            jogos = []
-            for _ in range(qtd_jogos):
-                if estrategia == "Aleatório":
-                    jogo = sorted(random.sample(range(config["min_num"], config["max_num"]+1), config["qtd_numeros"]))
-                elif estrategia == "Números Quentes":
-                    top = freq.head(config["qtd_numeros"] + 8)["numero"].tolist()
-                    jogo = sorted(random.sample(top, config["qtd_numeros"]))
-                elif estrategia == "Números Atrasados":
-                    top = atraso.head(config["qtd_numeros"] + 8)["numero"].tolist()
-                    jogo = sorted(random.sample(top, config["qtd_numeros"]))
-                else:
-                    jogo = gerar_jogo_ponderado(freq, atraso, config["qtd_numeros"], config["min_num"], config["max_num"])
-                jogos.append(jogo)
-            st.session_state.jogos_gerados = jogos
+        st.markdown("#### Formular Jogos")
+        st.info(f"**Modo selecionado:** {modo_geracao}" + (f" → {estrategia}" if modo_geracao == "Formulação Inteligente" else ""))
+        
+        if st.button("Gerar Jogos Agora", type="primary", use_container_width=True):
+            if "df" not in st.session_state:
+                st.warning("Carregue o histórico primeiro para usar a Formulação Inteligente.")
+            else:
+                freq = analisar_frequencia(df, config["min_num"], config["max_num"])
+                atraso = calcular_atraso(df, config["min_num"], config["max_num"])
+                jogos = []
+                for _ in range(qtd_jogos):
+                    if modo_geracao == "Formulação Normal" or estrategia == "Aleatório":
+                        jogo = sorted(random.sample(range(config["min_num"], config["max_num"]+1), config["qtd_numeros"]))
+                    elif "Quentes" in estrategia:
+                        top = freq.head(config["qtd_numeros"] + 8)["numero"].tolist()
+                        jogo = sorted(random.sample(top, config["qtd_numeros"]))
+                    elif "Atrasados" in estrategia:
+                        top = atraso.head(config["qtd_numeros"] + 8)["numero"].tolist()
+                        jogo = sorted(random.sample(top, config["qtd_numeros"]))
+                    else:  # Equilibrada
+                        jogo = gerar_jogo_ponderado(freq, atraso, config["qtd_numeros"], config["min_num"], config["max_num"])
+                    jogos.append(jogo)
+                st.session_state.jogos_gerados = jogos
         
         if "jogos_gerados" in st.session_state:
+            st.markdown("---")
             for idx, jogo in enumerate(st.session_state.jogos_gerados, 1):
                 nums_html = " ".join([f'<span style="background:{config["cor"]};color:white;padding:5px 9px;border-radius:50%;font-weight:bold;margin:1px;display:inline-block;">{n:02d}</span>' for n in jogo])
                 st.markdown(f"**Jogo {idx}:** {nums_html}", unsafe_allow_html=True)
             
             txt = "\n".join(" - ".join(f"{n:02d}" for n in j) for j in st.session_state.jogos_gerados)
-            st.download_button("📥 Baixar jogos (.txt)", txt, file_name=f"jogos_{config['nome_curto']}.txt")
+            st.download_button("📥 Baixar jogos (.txt)", txt, file_name=f"jogos_{config['nome_curto']}.txt", use_container_width=True)
     
     with tab4:
         st.markdown("#### Últimos resultados")
