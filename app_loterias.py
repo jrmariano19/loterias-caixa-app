@@ -90,60 +90,78 @@ LOTERIAS = {
     "Mega-Sena": {
         "json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/mega-sena.json",
         "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/megasena/",
-        "min_num": 1, "max_num": 60, "qtd_numeros": 6, "nome_curto": "megasena", "cor": "#00A651"
+        "min_num": 1, "max_num": 60, "qtd_numeros": 6, "nome_curto": "megasena", "cor": "#00A651", "dois_sorteios": False
     },
     "Lotofácil": {
         "json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/lotofacil.json",
         "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil/",
-        "min_num": 1, "max_num": 25, "qtd_numeros": 15, "nome_curto": "lotofacil", "cor": "#9B1B6E"
+        "min_num": 1, "max_num": 25, "qtd_numeros": 15, "nome_curto": "lotofacil", "cor": "#9B1B6E", "dois_sorteios": False
     },
     "Quina": {
         "json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/quina.json",
         "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/quina/",
-        "min_num": 1, "max_num": 80, "qtd_numeros": 5, "nome_curto": "quina", "cor": "#4B0082"
+        "min_num": 1, "max_num": 80, "qtd_numeros": 5, "nome_curto": "quina", "cor": "#4B0082", "dois_sorteios": False
+    },
+    "Dupla Sena": {
+        "json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/dupla-sena.json",
+        "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/duplasena/",
+        "min_num": 1, "max_num": 50, "qtd_numeros": 6, "nome_curto": "duplasena", "cor": "#C41E3A", "dois_sorteios": True
     },
     "Lotomania": {
         "json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/lotomania.json",
         "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotomania/",
-        "min_num": 0, "max_num": 99, "qtd_numeros": 20, "nome_curto": "lotomania", "cor": "#FF6B00"
+        "min_num": 0, "max_num": 99, "qtd_numeros": 20, "nome_curto": "lotomania", "cor": "#FF6B00", "dois_sorteios": False
     },
     "Dia de Sorte": {
         "json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/dia-de-sorte.json",
         "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/diadesorte/",
-        "min_num": 1, "max_num": 31, "qtd_numeros": 7, "nome_curto": "diadesorte", "cor": "#FFD700"
+        "min_num": 1, "max_num": 31, "qtd_numeros": 7, "nome_curto": "diadesorte", "cor": "#FFD700", "dois_sorteios": False
     }
 }
 
 @st.cache_data(ttl=3600)
-def carregar_historico(url):
+def carregar_historico(url, dois_sorteios=False):
     try:
         resp = requests.get(url, timeout=30)
         resp.raise_for_status()
         dados = resp.json()
         registros = []
         for item in dados:
-            nums = [int(n) for n in item.get("resultado", [])]
-            registros.append({
-                "concurso": item.get("concurso"),
-                "data": item.get("data"),
-                "numeros": nums
-            })
+            if dois_sorteios:
+                nums1 = [int(n) for n in item.get("resultado_1", item.get("resultado", []))]
+                nums2 = [int(n) for n in item.get("resultado_2", [])]
+                registros.append({
+                    "concurso": item.get("concurso"),
+                    "data": item.get("data"),
+                    "numeros": nums1,
+                    "numeros2": nums2
+                })
+            else:
+                nums = [int(n) for n in item.get("resultado", [])]
+                registros.append({
+                    "concurso": item.get("concurso"),
+                    "data": item.get("data"),
+                    "numeros": nums,
+                    "numeros2": []
+                })
         return pd.DataFrame(registros).sort_values("concurso").reset_index(drop=True)
     except Exception as e:
         st.error(f"Erro ao carregar histórico: {e}")
         return pd.DataFrame()
 
 @st.cache_data(ttl=600)
-def buscar_ultimo_oficial(url):
+def buscar_ultimo_oficial(url, dois_sorteios=False):
     try:
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
         data = resp.json()
         dezenas = data.get("listaDezenas", [])
+        dezenas2 = data.get("listaDezenasSegundoSorteio", []) or []
         return {
             "concurso": data.get("numero"),
             "data": data.get("dataApuracao"),
             "numeros": [int(n) for n in dezenas],
+            "numeros2": [int(n) for n in dezenas2] if dois_sorteios else [],
             "acumulado": data.get("acumulado", False),
             "proximo_valor": data.get("valorEstimadoProximoConcurso", "N/A"),
             "data_proximo": data.get("dataProximoConcurso")
@@ -228,15 +246,24 @@ col1, col2 = st.columns([1, 1])
 
 with col1:
     st.markdown("### 📊 Último Resultado")
-    ultimo = buscar_ultimo_oficial(config["oficial_latest"])
+    ultimo = buscar_ultimo_oficial(config["oficial_latest"], config.get("dois_sorteios", False))
     if "erro" in ultimo:
         st.error(f"Não foi possível buscar o último resultado: {ultimo['erro']}")
     else:
         st.metric("Concurso", ultimo.get("concurso", "N/A"))
         st.write(f"**Data:** {ultimo.get('data', 'N/A')}")
+        
         nums = sorted(ultimo.get("numeros", []))
         nums_html = " ".join([f'<span style="background:{config["cor"]};color:white;padding:6px 10px;border-radius:50%;font-weight:bold;margin:2px;display:inline-block;">{n:02d}</span>' for n in nums])
+        st.markdown("**1º Sorteio:**" if config.get("dois_sorteios") else "**Números:**", unsafe_allow_html=True)
         st.markdown(nums_html, unsafe_allow_html=True)
+        
+        if config.get("dois_sorteios") and ultimo.get("numeros2"):
+            nums2 = sorted(ultimo.get("numeros2", []))
+            nums2_html = " ".join([f'<span style="background:{config["cor"]};color:white;padding:6px 10px;border-radius:50%;font-weight:bold;margin:2px;display:inline-block;">{n:02d}</span>' for n in nums2])
+            st.markdown("**2º Sorteio:**", unsafe_allow_html=True)
+            st.markdown(nums2_html, unsafe_allow_html=True)
+        
         if ultimo.get("acumulado"):
             st.info("🔴 Acumulou")
         else:
@@ -246,7 +273,7 @@ with col2:
     st.markdown("### 📈 Análise")
     if st.button("Carregar Histórico Completo", type="primary", use_container_width=True):
         with st.spinner("Carregando dados históricos..."):
-            df = carregar_historico(config["json_url"])
+            df = carregar_historico(config["json_url"], config.get("dois_sorteios", False))
         if df.empty:
             st.error("Não foi possível carregar o histórico.")
         else:
