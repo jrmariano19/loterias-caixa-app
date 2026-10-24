@@ -7,376 +7,215 @@ import plotly.express as px
 import random
 
 st.set_page_config(
-    page_title="Loterias Caixa | Analisador",
+    page_title="Loterias Caixa",
     page_icon="🍀",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# CSS profissional inspirado nas Loterias Caixa
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #f5f7fa;
-    }
-    .main-header {
-        background: linear-gradient(90deg, #006B3F 0%, #00A651 100%);
-        padding: 1.5rem 2rem;
-        border-radius: 12px;
+    .stApp { background-color: #f8f9fa; }
+    .header-caixa {
+        background: linear-gradient(90deg, #006B3F, #00A651);
         color: white;
-        margin-bottom: 1.5rem;
-        box-shadow: 0 4px 12px rgba(0,107,63,0.25);
+        padding: 1rem 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 1rem;
     }
-    .main-header h1 {
-        margin: 0;
-        font-size: 2rem;
-        font-weight: 700;
+    .numero-btn {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 2px solid #00A651;
+        background: white;
+        color: #00A651;
+        font-weight: bold;
+        margin: 4px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
-    .main-header p {
-        margin: 0.3rem 0 0 0;
-        opacity: 0.9;
-        font-size: 1rem;
+    .numero-btn.selected {
+        background: #00A651;
+        color: white;
     }
-    .result-card {
+    .premio-box {
         background: white;
         border-radius: 12px;
         padding: 1.2rem;
+        text-align: center;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        border-left: 5px solid #00A651;
-    }
-    .stButton>button {
-        background-color: #00A651;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-weight: 600;
-    }
-    .stButton>button:hover {
-        background-color: #008C44;
-        color: white;
-    }
-    div[data-testid="stMetricValue"] {
-        color: #006B3F;
-        font-weight: 700;
-    }
-    .disclaimer {
-        background: #fff8e6;
-        border-left: 4px solid #f0ad4e;
-        padding: 0.8rem 1rem;
-        border-radius: 6px;
-        font-size: 0.9rem;
         margin-bottom: 1rem;
     }
+    .premio-valor { font-size: 1.8rem; font-weight: 800; color: #00A651; }
 </style>
 """, unsafe_allow_html=True)
 
-# Header profissional
+# Header
 st.markdown("""
-<div class="main-header">
-    <h1>🍀 Loterias Caixa</h1>
-    <p>Analisador Inteligente de Resultados e Gerador de Jogos</p>
+<div class="header-caixa">
+    <h1 style="margin:0;">🍀 Loterias Caixa</h1>
+    <p style="margin:0; opacity:0.9;">Monte seus jogos ou use a formulação inteligente</p>
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<div class="disclaimer">
-    <strong>Aviso:</strong> Os sorteios são aleatórios. Análises de frequência e atrasos <strong>não aumentam</strong> a chance real de acerto. 
-    Este aplicativo é apenas para entretenimento e análise estatística. Jogue com responsabilidade.
-</div>
-""", unsafe_allow_html=True)
+st.warning("⚠️ Os sorteios são aleatórios. Análises não aumentam a chance real. Jogue com responsabilidade.")
 
-# Configurações das loterias
+# Loterias
 LOTERIAS = {
-    "Mega-Sena": {
-        "json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/mega-sena.json",
-        "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/megasena/",
-        "min_num": 1, "max_num": 60, "qtd_numeros": 6, "nome_curto": "megasena", "cor": "#00A651", "dois_sorteios": False
-    },
-    "Lotofácil": {
-        "json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/lotofacil.json",
-        "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil/",
-        "min_num": 1, "max_num": 25, "qtd_numeros": 15, "nome_curto": "lotofacil", "cor": "#9B1B6E", "dois_sorteios": False
-    },
-    "Quina": {
-        "json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/quina.json",
-        "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/quina/",
-        "min_num": 1, "max_num": 80, "qtd_numeros": 5, "nome_curto": "quina", "cor": "#4B0082", "dois_sorteios": False
-    },
-    "Dupla Sena": {
-        "json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/dupla-sena.json",
-        "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/duplasena/",
-        "min_num": 1, "max_num": 50, "qtd_numeros": 6, "nome_curto": "duplasena", "cor": "#C41E3A", "dois_sorteios": True
-    },
-    "Lotomania": {
-        "json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/lotomania.json",
-        "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotomania/",
-        "min_num": 0, "max_num": 99, "qtd_numeros": 20, "nome_curto": "lotomania", "cor": "#FF6B00", "dois_sorteios": False
-    },
-    "Dia de Sorte": {
-        "json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/dia-de-sorte.json",
-        "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/diadesorte/",
-        "min_num": 1, "max_num": 31, "qtd_numeros": 7, "nome_curto": "diadesorte", "cor": "#FFD700", "dois_sorteios": False
-    }
+    "Mega-Sena": {"json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/mega-sena.json", "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/megasena/", "min_num": 1, "max_num": 60, "qtd_numeros": 6, "cor": "#00A651", "dois_sorteios": False},
+    "Lotofácil": {"json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/lotofacil.json", "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil/", "min_num": 1, "max_num": 25, "qtd_numeros": 15, "cor": "#9B1B6E", "dois_sorteios": False},
+    "Quina": {"json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/quina.json", "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/quina/", "min_num": 1, "max_num": 80, "qtd_numeros": 5, "cor": "#4B0082", "dois_sorteios": False},
+    "Dupla Sena": {"json_url": "https://raw.githubusercontent.com/eitchtee/loterias.json/main/data/dupla-sena.json", "oficial_latest": "https://servicebus2.caixa.gov.br/portaldeloterias/api/duplasena/", "min_num": 1, "max_num": 50, "qtd_numeros": 6, "cor": "#C41E3A", "dois_sorteios": True},
 }
 
-@st.cache_data(ttl=3600)
-def carregar_historico(url, dois_sorteios=False):
-    try:
-        resp = requests.get(url, timeout=30)
-        resp.raise_for_status()
-        dados = resp.json()
-        registros = []
-        for item in dados:
-            if dois_sorteios:
-                nums1 = [int(n) for n in item.get("resultado_1", item.get("resultado", []))]
-                nums2 = [int(n) for n in item.get("resultado_2", [])]
-                registros.append({
-                    "concurso": item.get("concurso"),
-                    "data": item.get("data"),
-                    "numeros": nums1,
-                    "numeros2": nums2
-                })
-            else:
-                nums = [int(n) for n in item.get("resultado", [])]
-                registros.append({
-                    "concurso": item.get("concurso"),
-                    "data": item.get("data"),
-                    "numeros": nums,
-                    "numeros2": []
-                })
-        return pd.DataFrame(registros).sort_values("concurso").reset_index(drop=True)
-    except Exception as e:
-        st.error(f"Erro ao carregar histórico: {e}")
-        return pd.DataFrame()
-
 @st.cache_data(ttl=600)
-def buscar_ultimo_oficial(url, dois_sorteios=False):
+def buscar_ultimo(url):
     try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-        dezenas = data.get("listaDezenas", [])
-        dezenas2 = data.get("listaDezenasSegundoSorteio", []) or []
+        r = requests.get(url, timeout=12)
+        r.raise_for_status()
+        d = r.json()
         return {
-            "concurso": data.get("numero"),
-            "data": data.get("dataApuracao"),
-            "numeros": [int(n) for n in dezenas],
-            "numeros2": [int(n) for n in dezenas2] if dois_sorteios else [],
-            "acumulado": data.get("acumulado", False),
-            "proximo_valor": data.get("valorEstimadoProximoConcurso", "N/A"),
-            "data_proximo": data.get("dataProximoConcurso")
+            "concurso": d.get("numero"),
+            "data": d.get("dataApuracao"),
+            "numeros": [int(x) for x in d.get("listaDezenas", [])],
+            "numeros2": [int(x) for x in d.get("listaDezenasSegundoSorteio", []) or []],
+            "acumulado": d.get("acumulado", False),
+            "proximo": d.get("valorEstimadoProximoConcurso", "N/A"),
+            "data_prox": d.get("dataProximoConcurso")
         }
-    except Exception as e:
-        return {"erro": str(e)}
+    except:
+        return None
 
-def analisar_frequencia(df, min_n, max_n):
-    todos = []
-    for nums in df["numeros"]:
-        todos.extend(nums)
-    contagem = Counter(todos)
-    freq = pd.DataFrame({
-        "numero": range(min_n, max_n + 1),
-        "frequencia": [contagem.get(i, 0) for i in range(min_n, max_n + 1)]
-    })
-    total_sorteios = len(df)
-    if total_sorteios and len(df) > 0:
-        qtd = len(df["numeros"].iloc[0])
-        freq["porcentagem"] = (freq["frequencia"] / (total_sorteios * qtd) * 100).round(2)
-    else:
-        freq["porcentagem"] = 0
-    return freq.sort_values("frequencia", ascending=False)
-
-def calcular_atraso(df, min_n, max_n):
-    if df.empty:
+@st.cache_data(ttl=3600)
+def carregar_hist(url, dois=False):
+    try:
+        r = requests.get(url, timeout=25)
+        r.raise_for_status()
+        dados = r.json()
+        regs = []
+        for item in dados:
+            if dois:
+                n1 = [int(x) for x in item.get("resultado_1", item.get("resultado", []))]
+                n2 = [int(x) for x in item.get("resultado_2", [])]
+            else:
+                n1 = [int(x) for x in item.get("resultado", [])]
+                n2 = []
+            regs.append({"concurso": item.get("concurso"), "data": item.get("data"), "numeros": n1, "numeros2": n2})
+        return pd.DataFrame(regs).sort_values("concurso").reset_index(drop=True)
+    except:
         return pd.DataFrame()
-    ultimo_concurso = df["concurso"].max()
-    atrasos = {}
-    for num in range(min_n, max_n + 1):
-        aparicoes = df[df["numeros"].apply(lambda x: num in x)]
-        if len(aparicoes) == 0:
-            atrasos[num] = ultimo_concurso
-        else:
-            atrasos[num] = ultimo_concurso - aparicoes["concurso"].max()
-    return pd.DataFrame({
-        "numero": list(atrasos.keys()),
-        "atraso_concursos": list(atrasos.values())
-    }).sort_values("atraso_concursos", ascending=False)
 
-def gerar_jogo_ponderado(freq_df, atraso_df, qtd, min_n, max_n, peso_freq=0.6, peso_atraso=0.4):
-    pesos = {}
-    max_freq = freq_df["frequencia"].max() or 1
-    max_atraso = atraso_df["atraso_concursos"].max() or 1
-    for _, row in freq_df.iterrows():
-        num = int(row["numero"])
-        peso_f = row["frequencia"] / max_freq
-        atraso_row = atraso_df[atraso_df["numero"] == num]
-        peso_a = atraso_row["atraso_concursos"].values[0] / max_atraso if len(atraso_row) else 0
-        pesos[num] = peso_freq * peso_f + peso_atraso * peso_a
-    numeros = list(pesos.keys())
-    pesos_list = np.array([pesos[n] for n in numeros])
-    pesos_list = pesos_list / pesos_list.sum()
-    escolhidos = set()
-    tentativas = 0
-    while len(escolhidos) < qtd and tentativas < 1000:
-        cand = np.random.choice(numeros, p=pesos_list)
-        if cand not in escolhidos:
-            escolhidos.add(cand)
-        tentativas += 1
-    return sorted(list(escolhidos))[:qtd]
+def analisar_freq(df, mn, mx):
+    todos = [n for nums in df["numeros"] for n in nums]
+    c = Counter(todos)
+    return pd.DataFrame({"numero": range(mn, mx+1), "freq": [c.get(i,0) for i in range(mn, mx+1)]}).sort_values("freq", ascending=False)
+
+def analisar_atraso(df, mn, mx):
+    if df.empty: return pd.DataFrame()
+    ult = df["concurso"].max()
+    atr = {}
+    for n in range(mn, mx+1):
+        ap = df[df["numeros"].apply(lambda x: n in x)]
+        atr[n] = ult if ap.empty else ult - ap["concurso"].max()
+    return pd.DataFrame({"numero": list(atr.keys()), "atraso": list(atr.values())}).sort_values("atraso", ascending=False)
 
 # Sidebar
 with st.sidebar:
-    st.markdown("### ⚙️ Configurações")
-    loteria_selecionada = st.selectbox("Escolha a Loteria", list(LOTERIAS.keys()))
-    config = LOTERIAS[loteria_selecionada]
-    
+    st.header("Configurações")
+    loteria = st.selectbox("Loteria", list(LOTERIAS.keys()))
+    cfg = LOTERIAS[loteria]
     st.markdown("---")
-    st.markdown("### 🎯 Formular Jogos")
-    qtd_jogos = st.slider("Quantidade de jogos", 1, 20, 5)
-    
-    modo_geracao = st.radio(
-        "Modo de formulação",
-        ["Formulação Normal", "Formulação Inteligente"],
-        help="Normal: gera de forma simples. Inteligente: analisa o histórico e prioriza números com tendência."
-    )
-    
-    if modo_geracao == "Formulação Inteligente":
-        estrategia = st.selectbox(
-            "Tipo de análise inteligente",
-            ["Equilibrada (Frequência + Atraso)", "Números Quentes (mais saíram)", "Números Atrasados (há mais tempo sem sair)"]
-        )
-    else:
-        estrategia = "Aleatório"
-    
-    st.markdown("---")
-    st.caption("Dados oficiais da Caixa + histórico público")
+    modo = st.radio("Como montar o jogo", ["Montar manualmente", "Formulação Inteligente"])
+    qtd_jogos = st.slider("Quantidade de jogos", 1, 10, 1)
 
-# Conteúdo principal
-col1, col2 = st.columns([1, 1])
+# Último resultado
+ultimo = buscar_ultimo(cfg["oficial_latest"])
+if ultimo:
+    col_a, col_b = st.columns([2,1])
+    with col_a:
+        st.markdown(f"### {loteria}")
+        if ultimo.get("proximo") and ultimo["proximo"] != "N/A":
+            st.markdown(f'<div class="premio-box"><div class="premio-valor">R$ {ultimo["proximo"]}</div><div>Prêmio estimado</div></div>', unsafe_allow_html=True)
+        nums = " ".join(f"<span style='background:{cfg['cor']};color:white;padding:6px 10px;border-radius:50%;margin:2px;display:inline-block;font-weight:bold'>{n:02d}</span>" for n in sorted(ultimo["numeros"]))
+        st.markdown(f"**Último concurso {ultimo['concurso']}** ({ultimo['data']})")
+        st.markdown(nums, unsafe_allow_html=True)
+        if cfg["dois_sorteios"] and ultimo.get("numeros2"):
+            nums2 = " ".join(f"<span style='background:{cfg['cor']};color:white;padding:6px 10px;border-radius:50%;margin:2px;display:inline-block;font-weight:bold'>{n:02d}</span>" for n in sorted(ultimo["numeros2"]))
+            st.markdown("**2º Sorteio:** " + nums2, unsafe_allow_html=True)
 
-with col1:
-    st.markdown("### 📊 Último Resultado")
-    ultimo = buscar_ultimo_oficial(config["oficial_latest"], config.get("dois_sorteios", False))
-    if "erro" in ultimo:
-        st.error(f"Não foi possível buscar o último resultado: {ultimo['erro']}")
-    else:
-        st.metric("Concurso", ultimo.get("concurso", "N/A"))
-        st.write(f"**Data:** {ultimo.get('data', 'N/A')}")
-        
-        nums = sorted(ultimo.get("numeros", []))
-        nums_html = " ".join([f'<span style="background:{config["cor"]};color:white;padding:6px 10px;border-radius:50%;font-weight:bold;margin:2px;display:inline-block;">{n:02d}</span>' for n in nums])
-        st.markdown("**1º Sorteio:**" if config.get("dois_sorteios") else "**Números:**", unsafe_allow_html=True)
-        st.markdown(nums_html, unsafe_allow_html=True)
-        
-        if config.get("dois_sorteios") and ultimo.get("numeros2"):
-            nums2 = sorted(ultimo.get("numeros2", []))
-            nums2_html = " ".join([f'<span style="background:{config["cor"]};color:white;padding:6px 10px;border-radius:50%;font-weight:bold;margin:2px;display:inline-block;">{n:02d}</span>' for n in nums2])
-            st.markdown("**2º Sorteio:**", unsafe_allow_html=True)
-            st.markdown(nums2_html, unsafe_allow_html=True)
-        
-        if ultimo.get("acumulado"):
-            st.info("🔴 Acumulou")
-        else:
-            st.success("🟢 Teve ganhador(es)")
-
-with col2:
-    st.markdown("### 📈 Análise")
-    if st.button("Carregar Histórico Completo", type="primary", use_container_width=True):
-        with st.spinner("Carregando dados históricos..."):
-            df = carregar_historico(config["json_url"], config.get("dois_sorteios", False))
-        if df.empty:
-            st.error("Não foi possível carregar o histórico.")
-        else:
-            st.session_state.df = df
-            st.session_state.config = config
-            st.success(f"✅ {len(df)} concursos carregados")
-
-# Tabs de análise
-if "df" in st.session_state and st.session_state.get("config") == config:
-    df = st.session_state.df
-    config = st.session_state.config
+# Área de montagem
+st.markdown("---")
+if modo == "Montar manualmente":
+    st.subheader("Monte seu jogo")
+    if "selecionados" not in st.session_state:
+        st.session_state.selecionados = set()
     
-    tab1, tab2, tab3, tab4 = st.tabs(["Frequência", "Atrasos", "Gerar Jogos", "Histórico"])
+    # Grade de números
+    cols = st.columns(10)
+    for i, num in enumerate(range(cfg["min_num"], cfg["max_num"]+1)):
+        with cols[i % 10]:
+            sel = num in st.session_state.selecionados
+            label = f"{'✓' if sel else ''}{num:02d}"
+            if st.button(label, key=f"n{num}", use_container_width=True, type="primary" if sel else "secondary"):
+                if sel:
+                    st.session_state.selecionados.discard(num)
+                else:
+                    if len(st.session_state.selecionados) < cfg["qtd_numeros"]:
+                        st.session_state.selecionados.add(num)
+                st.rerun()
     
-    with tab1:
-        st.markdown("#### Números mais e menos frequentes")
-        freq = analisar_frequencia(df, config["min_num"], config["max_num"])
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("**🔥 Mais frequentes**")
-            st.dataframe(freq.head(15), use_container_width=True, hide_index=True)
-        with c2:
-            st.markdown("**❄️ Menos frequentes**")
-            st.dataframe(freq.tail(15).sort_values("frequencia"), use_container_width=True, hide_index=True)
-        fig = px.bar(freq.head(25), x="numero", y="frequencia", title="Top 25 mais frequentes",
-                     color_discrete_sequence=[config["cor"]])
-        st.plotly_chart(fig, use_container_width=True)
+    st.markdown(f"**Selecionados:** {len(st.session_state.selecionados)} / {cfg['qtd_numeros']}")
+    if st.button("Completar com números aleatórios", use_container_width=True):
+        faltam = cfg["qtd_numeros"] - len(st.session_state.selecionados)
+        if faltam > 0:
+            disponiveis = [n for n in range(cfg["min_num"], cfg["max_num"]+1) if n not in st.session_state.selecionados]
+            st.session_state.selecionados.update(random.sample(disponiveis, faltam))
+            st.rerun()
     
-    with tab2:
-        st.markdown("#### Números mais atrasados")
-        atraso = calcular_atraso(df, config["min_num"], config["max_num"])
-        st.dataframe(atraso.head(20), use_container_width=True, hide_index=True)
-        fig2 = px.bar(atraso.head(20), x="numero", y="atraso_concursos", title="Maiores atrasos",
-                      color_discrete_sequence=["#FF6B00"])
-        st.plotly_chart(fig2, use_container_width=True)
-    
-    with tab3:
-        st.markdown("#### Formular Jogos")
-        st.info(f"**Modo selecionado:** {modo_geracao}" + (f" → {estrategia}" if modo_geracao == "Formulação Inteligente" else ""))
-        
-        if st.button("Gerar Jogos Agora", type="primary", use_container_width=True):
-            if "df" not in st.session_state:
-                st.warning("Carregue o histórico primeiro para usar a Formulação Inteligente.")
-            else:
-                freq = analisar_frequencia(df, config["min_num"], config["max_num"])
-                atraso = calcular_atraso(df, config["min_num"], config["max_num"])
-                jogos = []
-                for _ in range(qtd_jogos):
-                    if modo_geracao == "Formulação Normal" or estrategia == "Aleatório":
-                        jogo = sorted(random.sample(range(config["min_num"], config["max_num"]+1), config["qtd_numeros"]))
-                    elif "Quentes" in estrategia:
-                        top = freq.head(config["qtd_numeros"] + 8)["numero"].tolist()
-                        jogo = sorted(random.sample(top, config["qtd_numeros"]))
-                    elif "Atrasados" in estrategia:
-                        top = atraso.head(config["qtd_numeros"] + 8)["numero"].tolist()
-                        jogo = sorted(random.sample(top, config["qtd_numeros"]))
-                    else:  # Equilibrada
-                        jogo = gerar_jogo_ponderado(freq, atraso, config["qtd_numeros"], config["min_num"], config["max_num"])
-                    jogos.append(jogo)
-                st.session_state.jogos_gerados = jogos
-        
-        if "jogos_gerados" in st.session_state and st.session_state.jogos_gerados:
-            st.markdown("---")
-            st.markdown("### 🎫 Jogos Formulados")
-            for idx, jogo in enumerate(st.session_state.jogos_gerados, 1):
-                with st.container():
-                    st.markdown(f"**Jogo {idx}**")
-                    nums_html = " ".join([
-                        f'<span style="background:{config["cor"]};color:white;padding:8px 12px;border-radius:50%;font-weight:bold;margin:3px;display:inline-block;font-size:1.1rem;min-width:40px;text-align:center;">{n:02d}</span>'
-                        for n in jogo
-                    ])
-                    st.markdown(f'<div style="line-height:2.8;">{nums_html}</div>', unsafe_allow_html=True)
-                    st.markdown("")
-            
-            st.markdown("---")
-            txt = "\n".join(" - ".join(f"{n:02d}" for n in j) for j in st.session_state.jogos_gerados)
-            st.download_button(
-                "📥 Baixar todos os jogos (.txt)",
-                txt,
-                file_name=f"jogos_{config['nome_curto']}_{modo_geracao.replace(' ', '_').lower()}.txt",
-                use_container_width=True
-            )
-    
-    with tab4:
-        st.markdown("#### Últimos resultados")
-        recentes = df.tail(12).iloc[::-1]
-        for _, row in recentes.iterrows():
-            nums = sorted(row["numeros"])
-            nums_str = " ".join(f"{n:02d}" for n in nums)
-            st.write(f"**{row['concurso']}** ({row['data']}): `{nums_str}`")
+    if len(st.session_state.selecionados) == cfg["qtd_numeros"]:
+        jogo = sorted(st.session_state.selecionados)
+        html = " ".join(f"<span style='background:{cfg['cor']};color:white;padding:8px 12px;border-radius:50%;margin:3px;display:inline-block;font-weight:bold'>{n:02d}</span>" for n in jogo)
+        st.success("Jogo montado!")
+        st.markdown(html, unsafe_allow_html=True)
 
 else:
-    st.info("👆 Clique em **Carregar Histórico Completo** para começar a análise.")
+    st.subheader("Formulação Inteligente")
+    if st.button("Carregar histórico e gerar", type="primary", use_container_width=True):
+        with st.spinner("Analisando histórico..."):
+            df = carregar_hist(cfg["json_url"], cfg["dois_sorteios"])
+        if not df.empty:
+            freq = analisar_freq(df, cfg["min_num"], cfg["max_num"])
+            atraso = analisar_atraso(df, cfg["min_num"], cfg["max_num"])
+            jogos = []
+            for _ in range(qtd_jogos):
+                # Equilibrado
+                pesos = {}
+                mf = freq["freq"].max() or 1
+                ma = atraso["atraso"].max() or 1
+                for _, r in freq.iterrows():
+                    n = int(r["numero"])
+                    pf = r["freq"] / mf
+                    ar = atraso[atraso["numero"]==n]
+                    pa = (ar["atraso"].values[0]/ma) if len(ar) else 0
+                    pesos[n] = 0.55*pf + 0.45*pa
+                nums = list(pesos.keys())
+                p = np.array([pesos[n] for n in nums])
+                p = p / p.sum()
+                escolhidos = set()
+                while len(escolhidos) < cfg["qtd_numeros"]:
+                    escolhidos.add(np.random.choice(nums, p=p))
+                jogos.append(sorted(escolhidos))
+            st.session_state.jogos_intel = jogos
+    
+    if "jogos_intel" in st.session_state:
+        st.markdown("### Jogos Inteligentes")
+        for i, jogo in enumerate(st.session_state.jogos_intel, 1):
+            html = " ".join(f"<span style='background:{cfg['cor']};color:white;padding:8px 12px;border-radius:50%;margin:3px;display:inline-block;font-weight:bold'>{n:02d}</span>" for n in jogo)
+            st.markdown(f"**Jogo {i}**")
+            st.markdown(html, unsafe_allow_html=True)
+            st.markdown("")
 
-st.markdown("---")
-st.caption("Analisador de Loterias Caixa • Dados públicos • Jogue com responsabilidade")
+st.caption("App de análise e formulação • Dados públicos da Caixa • Jogue com responsabilidade")
