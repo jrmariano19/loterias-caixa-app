@@ -345,14 +345,27 @@ if "df" in st.session_state and st.session_state.get("config") == config:
                     jogos.append(jogo)
                 st.session_state.jogos_gerados = jogos
         
-        if "jogos_gerados" in st.session_state:
+        if "jogos_gerados" in st.session_state and st.session_state.jogos_gerados:
             st.markdown("---")
+            st.markdown("### 🎫 Jogos Formulados")
             for idx, jogo in enumerate(st.session_state.jogos_gerados, 1):
-                nums_html = " ".join([f'<span style="background:{config["cor"]};color:white;padding:5px 9px;border-radius:50%;font-weight:bold;margin:1px;display:inline-block;">{n:02d}</span>' for n in jogo])
-                st.markdown(f"**Jogo {idx}:** {nums_html}", unsafe_allow_html=True)
+                with st.container():
+                    st.markdown(f"**Jogo {idx}**")
+                    nums_html = " ".join([
+                        f'<span style="background:{config["cor"]};color:white;padding:8px 12px;border-radius:50%;font-weight:bold;margin:3px;display:inline-block;font-size:1.1rem;min-width:40px;text-align:center;">{n:02d}</span>'
+                        for n in jogo
+                    ])
+                    st.markdown(f'<div style="line-height:2.8;">{nums_html}</div>', unsafe_allow_html=True)
+                    st.markdown("")
             
+            st.markdown("---")
             txt = "\n".join(" - ".join(f"{n:02d}" for n in j) for j in st.session_state.jogos_gerados)
-            st.download_button("📥 Baixar jogos (.txt)", txt, file_name=f"jogos_{config['nome_curto']}.txt", use_container_width=True)
+            st.download_button(
+                "📥 Baixar todos os jogos (.txt)",
+                txt,
+                file_name=f"jogos_{config['nome_curto']}_{modo_geracao.replace(' ', '_').lower()}.txt",
+                use_container_width=True
+            )
     
     with tab4:
         st.markdown("#### Últimos resultados")
