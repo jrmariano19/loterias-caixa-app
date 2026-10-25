@@ -1,4 +1,4 @@
-[theme]
+
 base = "light"
 primaryColor = "#008A45"
 backgroundColor = "#F3EFE6"
