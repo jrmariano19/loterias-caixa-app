@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --color-paper: #f3efe6;
+  --color-ink: #1a241c;
+  --color-muted: #445249;
+  --color-line: #e3dacc;
+  --color-card: #fffdf8;
+  --color-accent: #008a45;
+  --color-mega: #008a45;
+  --color-loto: #8e1a64;
+  --color-quina: #3c2778;
+  --color-dupla: #9d1c38;
+  --shadow-ticket: 0 16px 40px -24px rgb(26 36 28 / 0.45);
+}
+
+[data-loteria="megasena"] {
+  --color-accent: var(--color-mega);
+}
+[data-loteria="lotofacil"] {
+  --color-accent: var(--color-loto);
+}
+[data-loteria="quina"] {
+  --color-accent: var(--color-quina);
+}
+[data-loteria="duplasena"] {
+  --color-accent: var(--color-dupla);
+}
+
+[data-tone="mega"] {
+  --tone: var(--color-mega);
+}
+[data-tone="loto"] {
+  --tone: var(--color-loto);
+}
+[data-tone="quina"] {
+  --tone: var(--color-quina);
+}
+[data-tone="dupla"] {
+  --tone: var(--color-dupla);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    text-wrap: pretty;
+  }
+  h1,
+  h2 {
+    text-wrap: balance;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  button:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--color-accent);
+  }
+}
+
+.tone-btn {
+  border: 1px solid var(--color-line);
+  background: var(--color-card);
+  color: var(--color-ink);
+  box-shadow: inset 0 -3px 0 var(--tone);
+}
+.tone-btn[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--tone);
+  color: var(--color-card);
+  box-shadow: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .num-btn:not(:disabled):not([aria-pressed="true"]):hover {
+    border-color: var(--color-accent);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .num-btn:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

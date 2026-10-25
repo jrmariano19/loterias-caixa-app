@@ -123,4 +123,4 @@ export function countHits(game: number[], draw: number[]): number {
 
 export function gameKey(nums: number[]): string {
   return [...nums].sort((a, b) => a - b).join("-");
-  }
+}
