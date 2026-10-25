@@ -1,5 +1,5 @@
+import math
 import random
-from collections import Counter
 
 import requests
 import streamlit as st
@@ -129,8 +129,29 @@ def get_ultimo(url):
     }
 
 
+def _mean_std(values):
+    count = len(values)
+    if count == 0:
+        return 0.0, 1.0
+    mean = sum(values) / count
+    var = sum((value - mean) ** 2 for value in values) / count
+    std = math.sqrt(var)
+    return mean, std if std > 1e-9 else 1.0
+
+
+def _percentile(sorted_vals, p):
+    if not sorted_vals:
+        return 0.0
+    if len(sorted_vals) == 1:
+        return float(sorted_vals[0])
+    k = (len(sorted_vals) - 1) * p
+    lo = int(k)
+    hi = min(lo + 1, len(sorted_vals) - 1)
+    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (k - lo)
+
+
 @st.cache_data(ttl=1800)
-def get_hist(url, dois):
+def get_hist(url, dois, min_n, max_n):
     response = requests.get(
         url,
         timeout=20,
@@ -140,26 +161,112 @@ def get_hist(url, dois):
     data = response.json()
     if not isinstance(data, list) or not data:
         raise ValueError("Histórico indisponível")
-    counts = Counter()
+    data = sorted(data, key=lambda item: item.get("concurso") or 0)
+    draws = []
     for item in data:
-        lists = (
+        groups = (
             [item.get("resultado_1") or [], item.get("resultado_2") or []]
             if dois
             else [item.get("resultado") or item.get("resultado_1") or []]
         )
-        for group in lists:
-            for n in to_nums(group):
-                counts[n] += 1
-    if not counts:
+        for group in groups:
+            nums = [n for n in to_nums(group) if min_n <= n <= max_n]
+            if nums:
+                draws.append(nums)
+    if len(draws) < 30:
         raise ValueError("Histórico indisponível")
-    return dict(counts), len(data)
+    return draws, len(data)
 
 
-def weighted_sample(pool, k):
-    bag = [{"n": item["n"], "w": max(1, item["w"])} for item in pool]
+def _analyze(draws, min_n, max_n, qtd):
+    universe = list(range(min_n, max_n + 1))
+    mid = (min_n + max_n) / 2
+    freq = {n: 0 for n in universe}
+    last = {n: -1 for n in universe}
+    gap_sum = {n: 0 for n in universe}
+    gap_count = {n: 0 for n in universe}
+    sums, evens, lows, consecutives = [], [], [], []
+    clean = []
+    for draw in draws:
+        nums = sorted({n for n in draw if min_n <= n <= max_n})
+        if len(nums) < qtd:
+            continue
+        clean.append(nums)
+    if len(clean) < 30:
+        raise ValueError("Histórico indisponível")
+    for index, nums in enumerate(clean):
+        for n in nums:
+            if last[n] >= 0:
+                gap_sum[n] += index - last[n]
+                gap_count[n] += 1
+            last[n] = index
+            freq[n] += 1
+        sums.append(sum(nums))
+        evens.append(sum(1 for n in nums if n % 2 == 0))
+        lows.append(sum(1 for n in nums if n <= mid))
+        consecutives.append(sum(1 for a, b in zip(nums, nums[1:]) if b == a + 1))
+    total = len(clean)
+    window = min(40, total)
+    recent = {n: 0 for n in universe}
+    for nums in clean[-window:]:
+        for n in nums:
+            recent[n] += 1
+    mean_freq, std_freq = _mean_std([freq[n] for n in universe])
+    mean_recent, std_recent = _mean_std([recent[n] for n in universe])
+    expected_gap = (max_n - min_n + 1) / qtd
+    current_gap = {}
+    ratios = []
+    for n in universe:
+        current_gap[n] = (total - 1 - last[n]) if last[n] >= 0 else total
+        average = (gap_sum[n] / gap_count[n]) if gap_count[n] else expected_gap
+        ratios.append(current_gap[n] / average if average else 0)
+    mean_ratio, std_ratio = _mean_std(ratios)
+    scores = {}
+    for index, n in enumerate(universe):
+        z_freq = (freq[n] - mean_freq) / std_freq
+        z_recent = (recent[n] - mean_recent) / std_recent
+        z_gap = (ratios[index] - mean_ratio) / std_ratio
+        scores[n] = 0.45 * z_freq + 0.35 * z_recent + 0.20 * z_gap
+    raw = list(scores.values())
+    low_score, high_score = min(raw), max(raw)
+    span = high_score - low_score or 1
+    ranking = []
+    for n in universe:
+        ranking.append(
+            {
+                "n": n,
+                "count": freq[n],
+                "atraso": current_gap[n],
+                "pontos": round(100 * (scores[n] - low_score) / span),
+                "score": scores[n],
+            }
+        )
+    ranking.sort(key=lambda item: (-item["score"], item["n"]))
+    sorted_sums = sorted(sums)
+    profile = {
+        "soma_min": int(round(_percentile(sorted_sums, 0.25))),
+        "soma_max": int(round(_percentile(sorted_sums, 0.75))),
+        "pares": int(round(sum(evens) / len(evens))),
+        "baixos": int(round(sum(lows) / len(lows))),
+        "max_consec": max(1, int(round(_percentile(sorted(consecutives), 0.75)))),
+        "span_min": _percentile(sorted(nums[-1] - nums[0] for nums in clean), 0.15),
+        "span_max": _percentile(sorted(nums[-1] - nums[0] for nums in clean), 0.90),
+        "janela": window,
+        "mid": mid,
+    }
+    return scores, ranking, profile
+
+
+def _weights(scores, used):
+    adjusted = {n: score - 0.45 * used.get(n, 0) for n, score in scores.items()}
+    top = max(adjusted.values())
+    return {n: math.exp((score - top) / 1.15) for n, score in adjusted.items()}
+
+
+def _sample(weights, k):
+    bag = [{"n": n, "w": w} for n, w in weights.items()]
     picked = []
-    take = min(k, len(bag))
-    for _ in range(take):
+    for _ in range(min(k, len(bag))):
         total = sum(item["w"] for item in bag)
         r = random.random() * total
         idx = len(bag) - 1
@@ -174,25 +281,61 @@ def weighted_sample(pool, k):
     return picked
 
 
-def make_games(counts, qtd, qty, universe):
-    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-    pool_size = min(universe, qtd + 12)
-    pool = [{"n": n, "w": c} for n, c in ranked[:pool_size]]
-    if len(pool) < qtd:
-        raise ValueError("Histórico indisponível")
+def _fits(game, profile, level):
+    total = sum(game)
+    width = max(1, profile["soma_max"] - profile["soma_min"])
+    pad = 0 if level == 0 else width * (0.2 if level == 1 else 0.6)
+    if not (profile["soma_min"] - pad <= total <= profile["soma_max"] + pad):
+        return False
+    slack = 1 if level == 0 else 2 if level == 1 else 4
+    pares = sum(1 for n in game if n % 2 == 0)
+    if abs(pares - profile["pares"]) > slack:
+        return False
+    baixos = sum(1 for n in game if n <= profile["mid"])
+    if abs(baixos - profile["baixos"]) > slack:
+        return False
+    sequencias = sum(1 for a, b in zip(game, game[1:]) if b == a + 1)
+    limit = profile["max_consec"] if level == 0 else profile["max_consec"] + (2 if level == 1 else 99)
+    if sequencias > limit:
+        return False
+    span = game[-1] - game[0]
+    span_pad = 0 if level == 0 else 4 if level == 1 else 99
+    if span < profile["span_min"] - span_pad or span > profile["span_max"] + span_pad:
+        return False
+    return True
+
+
+def make_games(draws, min_n, max_n, qtd, qty):
+    scores, ranking, profile = _analyze(draws, min_n, max_n, qtd)
     games = []
     seen = set()
+    used = {}
+    for level in (0, 1, 2):
+        guard = 0
+        while len(games) < qty and guard < 80:
+            guard += 1
+            game = _sample(_weights(scores, used), qtd)
+            key = "-".join(map(str, game))
+            if key in seen or not _fits(game, profile, level):
+                continue
+            seen.add(key)
+            games.append(game)
+            for n in game:
+                used[n] = used.get(n, 0) + 1
+        if len(games) >= qty:
+            break
     guard = 0
-    while len(games) < qty and guard < 80:
+    while len(games) < qty and guard < 40:
         guard += 1
-        game = weighted_sample(pool, qtd)
+        game = _sample(_weights(scores, used), qtd)
         key = "-".join(map(str, game))
         if key in seen:
             continue
         seen.add(key)
         games.append(game)
-    ranking = [{"n": n, "count": c} for n, c in ranked[:8]]
-    return games, ranking
+        for n in game:
+            used[n] = used.get(n, 0) + 1
+    return games, ranking[:8], profile
 
 
 if "loteria" not in st.session_state:
@@ -454,22 +597,26 @@ if st.session_state.modo == "Montar jogo":
 else:
     st.markdown("### Formulação inteligente")
     st.caption(
-        "Monta jogos dando mais peso aos números que mais saíram no histórico. "
-        "Cada combinação continua igualmente possível — isso não aumenta a chance de ganhar."
+        "Cada número recebe uma pontuação calculada nos concursos anteriores: "
+        "45% pela frequência em todo o histórico, 35% pela frequência nos últimos 40 concursos "
+        "e 20% pelo atraso (quantos sorteios está sem sair, comparado com a média dele). "
+        "O jogo é fechado no perfil dos resultados reais: soma, pares, números baixos e sequências. "
+        "Isso descreve o passado. Não aumenta a chance de ganhar."
     )
     qtd = st.slider("Quantidade de jogos", 1, 8, 3)
     if st.button("Gerar jogos", type="primary", use_container_width=True):
         with st.spinner("Analisando histórico…"):
             try:
-                counts, concursos = get_hist(cfg["json"], cfg["dois"])
-                games, ranking = make_games(
-                    counts, cfg["qtd"], qtd, cfg["max"] - cfg["min"] + 1
+                draws, concursos = get_hist(cfg["json"], cfg["dois"], cfg["min"], cfg["max"])
+                games, ranking, profile = make_games(
+                    draws, cfg["min"], cfg["max"], cfg["qtd"], qtd
                 )
                 st.session_state.intel = {
                     "loteria": loteria,
                     "games": games,
                     "ranking": ranking,
                     "concursos": concursos,
+                    "profile": profile,
                 }
                 st.session_state.notice = ""
             except Exception:
@@ -477,20 +624,26 @@ else:
                 st.error("Não consegui carregar o histórico para formular os jogos.")
     intel = st.session_state.intel
     if intel and intel.get("loteria") == loteria:
+        perfil = intel["profile"]
+        st.markdown(
+            f'<p class="kicker">{intel["concursos"]:,} concursos · soma típica {perfil["soma_min"]}–{perfil["soma_max"]} · cerca de {perfil["pares"]} pares</p>'.replace(
+                ",", "."
+            ),
+            unsafe_allow_html=True,
+        )
         rank_html = "".join(
             f'<span style="display:inline-flex;flex-direction:column;align-items:center;margin:0 8px 8px 0">'
             f'<span class="bolinha" style="background:{cor};margin:0">{r["n"]:02d}</span>'
-            f'<span class="muted">{r["count"]}</span></span>'
+            f'<span class="muted">{r["pontos"]} pts</span>'
+            f'<span class="muted">{r["atraso"]} atr.</span></span>'
             for r in intel["ranking"]
         )
-        st.markdown(
-            f'<p class="kicker">Mais sorteados em {intel["concursos"]:,} concursos</p>'.replace(",", ".")
-            + rank_html,
-            unsafe_allow_html=True,
-        )
+        st.markdown('<p class="kicker">Maior pontuação</p>' + rank_html, unsafe_allow_html=True)
         for i, jogo in enumerate(intel["games"], 1):
+            pares = sum(1 for n in jogo if n % 2 == 0)
             st.markdown(f"**Jogo {i}**")
             st.markdown(balls(jogo, cor), unsafe_allow_html=True)
+            st.caption(f"Soma {sum(jogo)} · {pares} pares")
             if st.button("Salvar", key=f"s-{loteria}-{i}"):
                 chave = (loteria, tuple(jogo))
                 if any((j["loteria"], tuple(j["numeros"])) == chave for j in st.session_state.jogos_salvos):
@@ -536,4 +689,4 @@ else:
 st.caption(
     "Jogue com responsabilidade. Este app não vende apostas e não tem vínculo com a Caixa Econômica Federal. "
     "Os jogos salvos duram só enquanto esta sessão estiver aberta."
-  )
+    )
