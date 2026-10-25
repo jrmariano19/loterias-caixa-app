@@ -64,7 +64,7 @@ export type LatestDraw = {
   dezenas: number[];
   dezenas2: number[] | null;
   premioEstimado: number | null;
-  acumulado: boolean;
+  acumulado: boolean | null;
   local: string | null;
   faixas: Faixa[];
 };

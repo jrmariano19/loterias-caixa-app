@@ -502,9 +502,11 @@ function LatestCard({
     <article className="overflow-hidden rounded-2xl border border-line bg-card shadow-ticket">
       <header className="flex items-center justify-between gap-3 bg-accent px-4 py-3 text-card">
         <h2 className="font-display text-2xl font-bold tracking-wide">{nome}</h2>
-        <span className="rounded-full bg-card px-2.5 py-1 text-xs font-semibold tracking-wide text-accent">
-          {draw.acumulado ? "ACUMULOU" : "TEVE GANHADOR"}
-        </span>
+        {draw.acumulado == null ? null : (
+          <span className="rounded-full bg-card px-2.5 py-1 text-xs font-semibold tracking-wide text-accent">
+            {draw.acumulado ? "ACUMULOU" : "TEVE GANHADOR"}
+          </span>
+        )}
       </header>
       <div className="px-4 py-4">
         {draw.premioEstimado ? (

@@ -51,7 +51,14 @@ function toFaixas(value: unknown): Faixa[] {
 
 async function fetchJson(url: string): Promise<unknown> {
   const response = await fetch(url, {
-    headers: { accept: "application/json", "user-agent": "Mozilla/5.0" },
+    headers: {
+      accept: "application/json, text/plain, */*",
+      "accept-language": "pt-BR,pt;q=0.9",
+      "user-agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      referer: "https://loterias.caixa.gov.br/",
+      origin: "https://loterias.caixa.gov.br",
+    },
     signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -111,6 +118,37 @@ async function historyDraws(id: LotteryId): Promise<{ draws: number[][]; concurs
   const data = { draws, concursos: rows.length, at: Date.now() };
   histCache.set(id, data);
   return data;
+}
+
+async function mirrorLatest(id: LotteryId): Promise<LatestDraw> {
+  const response = await fetch(LOTERIAS[id].json, {
+    headers: { accept: "application/json", "user-agent": "Mozilla/5.0" },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const payload: unknown = await response.json();
+  if (!Array.isArray(payload) || payload.length === 0) throw new Error("Histórico indisponível");
+  const rows = payload.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null);
+  rows.sort((a, b) => Number(a.concurso ?? 0) - Number(b.concurso ?? 0));
+  const cfg = LOTERIAS[id];
+  const last = rows[rows.length - 1];
+  const inRange = (nums: number[]) => nums.filter((n) => n >= cfg.min && n <= cfg.max);
+  const dezenas = inRange(toNums(last.resultado ?? last.resultado_1));
+  const segundo = cfg.doisSorteios ? inRange(toNums(last.resultado_2)) : [];
+  const numero = Number(last.concurso);
+  if (!Number.isFinite(numero) || dezenas.length === 0) throw new Error("Histórico indisponível");
+  return {
+    id,
+    numero,
+    dataApuracao: typeof last.data === "string" ? last.data : "",
+    dataProximo: null,
+    dezenas,
+    dezenas2: segundo.length > 0 ? segundo : null,
+    premioEstimado: null,
+    acumulado: null,
+    local: null,
+    faixas: [],
+  };
 }
 
 function meanStd(values: number[]): { mean: number; std: number } {
@@ -305,6 +343,13 @@ export const getLatest = createServerFn({ method: "GET" })
       return draw;
     } catch (err) {
       console.error("latest draw", err);
+      try {
+        const draw = await mirrorLatest(data.id);
+        latestCache.set(data.id, { at: Date.now(), data: draw });
+        return draw;
+      } catch (mirrorErr) {
+        console.error("latest mirror", mirrorErr);
+      }
       if (err instanceof Error && /inesperada|inválida/i.test(err.message)) throw err;
       throw new Error("Não consegui consultar o último concurso. Tente de novo.");
     }
