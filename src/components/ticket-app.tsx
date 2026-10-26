@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Clover, Copy, Dices, RefreshCw, Shuffle, Sparkles, Trash2 } from "lucide-react";
 import { getLatest, getSmartGames } from "@/lib/caixa.functions";
+import { fetchCaixaLatest } from "@/lib/caixa-live";
 import {
   LOTERIAS,
   LOTTERY_IDS,
@@ -120,20 +121,32 @@ export function TicketApp({ initial }: { initial: LatestDraw | null }) {
 
   // `latest` is intentionally omitted: it is only a seed to skip the first fetch.
   useEffect(() => {
-    if (tick === 0 && latest?.id === atual) return;
+    const seeded =
+      tick === 0 && latest?.id === atual && latest.premioEstimado != null && latest.concursoAtual != null;
+    if (seeded) return;
     let alive = true;
     setLatestLoading(true);
     setLatestError(null);
     getLatest({ data: { id: atual, fresh: tick > 0 } })
+      .catch(() => null)
+      .then(async (serverData) => {
+        if (!alive) return null;
+        if (serverData) setLatest(serverData);
+        try {
+          return await fetchCaixaLatest(atual);
+        } catch {
+          return serverData;
+        }
+      })
       .then((data) => {
         if (!alive) return;
-        setLatest(data);
-        setLatestLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (!alive) return;
-        setLatest(null);
-        setLatestError(err instanceof Error ? err.message : "Não consegui consultar o concurso.");
+        if (data) {
+          setLatest(data);
+          setLatestError(null);
+        } else {
+          setLatest(null);
+          setLatestError("Não consegui consultar o último concurso. Tente de novo.");
+        }
         setLatestLoading(false);
       });
     return () => {
@@ -502,11 +515,9 @@ function LatestCard({
     <article className="overflow-hidden rounded-2xl border border-line bg-card shadow-ticket">
       <header className="flex items-center justify-between gap-3 bg-accent px-4 py-3 text-card">
         <h2 className="font-display text-2xl font-bold tracking-wide">{nome}</h2>
-        {draw.acumulado == null ? null : (
-          <span className="rounded-full bg-card px-2.5 py-1 text-xs font-semibold tracking-wide text-accent">
-            {draw.acumulado ? "ACUMULOU" : "TEVE GANHADOR"}
-          </span>
-        )}
+        <span className="rounded-full bg-card px-2.5 py-1 text-xs font-semibold tracking-wide text-accent">
+          Concurso {draw.concursoAtual ?? draw.numero}
+        </span>
       </header>
       <div className="px-4 py-4">
         {draw.premioEstimado ? (
@@ -516,15 +527,26 @@ function LatestCard({
               {formatBRL(draw.premioEstimado, digits)}
             </p>
             <p className="mt-2 text-sm text-muted">
-              {draw.dataProximo ? `Próximo concurso em ${draw.dataProximo}` : "Próximo concurso"}
+              {draw.concursoAtual
+                ? `Concurso ${draw.concursoAtual}${draw.dataProximo ? ` · sorteio em ${draw.dataProximo}` : ""}`
+                : draw.dataProximo
+                  ? `Próximo concurso em ${draw.dataProximo}`
+                  : "Próximo concurso"}
             </p>
           </>
         ) : null}
         <div className="mt-4 border-t border-dashed border-line pt-4">
-          <p className="text-sm font-semibold">
-            Concurso {draw.numero}
-            {draw.dataApuracao ? <span className="font-medium text-muted"> · {draw.dataApuracao}</span> : null}
-          </p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold">
+              Último sorteio · {draw.numero}
+              {draw.dataApuracao ? <span className="font-medium text-muted"> · {draw.dataApuracao}</span> : null}
+            </p>
+            {draw.acumulado == null ? null : (
+              <span className="shrink-0 rounded-full bg-accent/10 px-2 py-1 text-[11px] font-semibold tracking-wide text-accent">
+                {draw.acumulado ? "ACUMULOU" : "TEVE GANHADOR"}
+              </span>
+            )}
+          </div>
           {draw.local ? <p className="mt-1 text-xs tracking-wide text-muted uppercase">{draw.local}</p> : null}
           {draw.dezenas2 ? <p className="mt-3 text-xs font-semibold tracking-wide text-muted uppercase">1º sorteio</p> : null}
           <div className="mt-3">

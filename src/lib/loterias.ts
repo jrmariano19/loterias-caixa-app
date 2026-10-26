@@ -61,6 +61,7 @@ export type LatestDraw = {
   numero: number;
   dataApuracao: string;
   dataProximo: string | null;
+  concursoAtual: number | null;
   dezenas: number[];
   dezenas2: number[] | null;
   premioEstimado: number | null;

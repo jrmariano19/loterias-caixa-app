@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { drawFromCaixa } from "@/lib/caixa-live";
 import {
   LOTERIAS,
   type Faixa,
@@ -66,31 +67,7 @@ async function fetchJson(url: string): Promise<unknown> {
 }
 
 function readLatest(id: LotteryId, payload: unknown): LatestDraw {
-  if (typeof payload !== "object" || payload === null) {
-    throw new Error("Resposta inesperada da Caixa");
-  }
-  const rec = payload as Record<string, unknown>;
-  const numero = typeof rec.numero === "number" ? rec.numero : Number(rec.numero);
-  const dezenas = toNums(rec.listaDezenas);
-  if (!Number.isFinite(numero) || dezenas.length === 0) {
-    throw new Error("Resposta inesperada da Caixa");
-  }
-  const segundo = toNums(rec.listaDezenasSegundoSorteio);
-  const estimado = rec.valorEstimadoProximoConcurso;
-  const localRaw = typeof rec.nomeMunicipioUFSorteio === "string" ? rec.nomeMunicipioUFSorteio.trim() : "";
-  const proximo = typeof rec.dataProximoConcurso === "string" ? rec.dataProximoConcurso : "";
-  return {
-    id,
-    numero,
-    dataApuracao: typeof rec.dataApuracao === "string" ? rec.dataApuracao : "",
-    dataProximo: proximo || null,
-    dezenas,
-    dezenas2: segundo.length > 0 ? segundo : null,
-    premioEstimado: typeof estimado === "number" && estimado > 0 ? estimado : null,
-    acumulado: rec.acumulado === true,
-    local: localRaw || null,
-    faixas: toFaixas(rec.listaRateioPremio),
-  };
+  return drawFromCaixa(id, payload);
 }
 
 async function historyDraws(id: LotteryId): Promise<{ draws: number[][]; concursos: number }> {
@@ -142,6 +119,7 @@ async function mirrorLatest(id: LotteryId): Promise<LatestDraw> {
     numero,
     dataApuracao: typeof last.data === "string" ? last.data : "",
     dataProximo: null,
+    concursoAtual: null,
     dezenas,
     dezenas2: segundo.length > 0 ? segundo : null,
     premioEstimado: null,
@@ -338,7 +316,15 @@ export const getLatest = createServerFn({ method: "GET" })
       const cached = latestCache.get(data.id);
       if (!data.fresh && cached && Date.now() - cached.at < LATEST_TTL) return cached.data;
       const payload = await fetchJson(LOTERIAS[data.id].api);
-      const draw = readLatest(data.id, payload);
+      let draw = readLatest(data.id, payload);
+      if (draw.concursoAtual) {
+        try {
+          const newer = readLatest(data.id, await fetchJson(`${LOTERIAS[data.id].api}${draw.concursoAtual}`));
+          if (newer.numero > draw.numero && newer.dezenas.length > 0) draw = newer;
+        } catch {
+          /* concurso aberto ainda sem resultado */
+        }
+      }
       latestCache.set(data.id, { at: Date.now(), data: draw });
       return draw;
     } catch (err) {
